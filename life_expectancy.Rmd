@@ -1,0 +1,130 @@
+---
+title: "Analisis de Expectativa de vida por país"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+date: "2024-03-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Por medio de este análisis se busca estimar la expectativa de vida en distintos países considerando el conjunto de variables proporcionadas por la Organización mundial de salud.
+
+Fuente: https://www.kaggle.com/datasets/kumarajarshi/life-expectancy-who
+
+Entre ellas encontramos las que se mostrarán acontinuación.
+### Variables del set de datos
+
+
+```{r songData1}
+lifeExp <- read.csv("~/Downloads/lifeExp.csv")
+lifeExp <- na.omit(lifeExp)
+str(lifeExp)
+```
+## Gráficas de las variables selccionadas para el análisis
+
+Tras realizar un análisis exploratorio de los datos, se encontró que ciertas variables no mostraban una correlación significativa con la expectativa de vida en todos los casos, ya que existían datos nulos debido a la ubicación de enfermedades y otros factores. Por lo tanto, estas variables fueron excluidas del análisis de regresión lineal. Las gráficas presentadas muestran las variables seleccionadas para el análisis, las cuales se consideraron más relevantes y mostraron una correlación más clara con la expectativa de vida. Las variables excluidas incluyen: "under.five.deaths", "thinness..1.19.years", "thinness.5.9.years", "Polio", "Diphtheria", "Hepatitis.B", "Total.expenditure" y "GDP".
+
+```{r charts, fig.width=8, fig.heigth=9}
+par(mfrow = c(1, 2))
+
+columnas <- colnames(lifeExp)[!colnames(lifeExp) %in% c("Country", "Status", "Life.expectancy", "under.five.deaths", "thinness..1.19.years", "thinness.5.9.years", "Polio", "Diphtheria", "Hepatitis.B", "Total.expenditure", "GDP", "Year")]
+num_columnas <- 2
+num_filas <- ceiling(length(columnas) / num_columnas)
+
+# Iterar sobre cada columna y hacer un gráfico
+for (col in columnas) {
+  plot(lifeExp$Life.expectancy, lifeExp[[col]], 
+       main = paste(col, "X Expectativa de Vida"),
+       xlab = "Expectativa de Vida",
+       ylab = col,
+       pch = 19,  
+       col = "blue")
+}
+```
+
+1. **Mortalidad Adulta vs. Expectativa de Vida**: Relación negativa fuerte; a mayor mortalidad adulta, menor expectativa de vida.
+2. **Muertes Infantiles vs. Expectativa de Vida**: Relación negativa; más muertes infantiles implican una menor expectativa de vida.
+3. **Alcohol vs. Expectativa de Vida**: Relación débil o no aparente, sin un patrón claro.
+4. **Gasto Porcentual en Salud vs. Expectativa de Vida**: Relación positiva; más gasto en salud podría asociarse con una mayor expectativa de vida, aunque con datos dispersos.
+5. **Sarampión vs. Expectativa de Vida**: Existe una concentración de puntos en menor incidencia de sarampión con mayor expectativa de vida, pero sin una tendencia clara.
+6. **IMC vs. Expectativa de Vida**: Dispersion amplia de puntos, indicando una relación compleja o no lineal entre el IMC y la expectativa de vida.
+7. **VIH/SIDA vs. Expectativa de Vida**: Relación negativa fuerte; una mayor prevalencia de VIH/SIDA se correlaciona con una menor expectativa de vida.
+8. **Población vs. Expectativa de Vida**: La relación no es clara debido a la amplia dispersión de los puntos de datos a través de los tamaños de población.
+9. **Composición de Ingresos de los Recursos vs. Expectativa de Vida**: Relación positiva fuerte; una mayor composición de ingresos de los recursos tiende a correlacionarse con una mayor expectativa de vida.
+10. **Escolaridad vs. Expectativa de Vida**: Indica una relación positiva fuerte; más años de escolaridad se correlacionan con una mayor expectativa de vida.
+
+
+
+## Modelo de regresión general (haciendo uso de todas las variables selccionadas)
+
+```{r models, fig.width=10}
+
+# Ajustamos un modelo de regresión lineal múltiple
+modelo <- lm(lifeExp$Life.expectancy ~ ., data = lifeExp[, columnas])
+
+summary(modelo)
+```
+Se puede evidencia que existen variables que no contribuyen significativamente a la explicación de la variable "Expectativa de vida", entre ellas esta Measles (La tasa de afectacción del Sarampión en los países observados por cada 1000 habitantes) y el tamaño de la población.
+
+
+```{r subset, fig.width=10}
+if (!require("olsrr")) install.packages("olsrr")
+if (!require("leaps")) install.packages("leaps")
+
+library(olsrr)
+library(leaps)
+mejor_subconjunto <-  ols_step_best_subset(modelo)
+mejor_subconjunto
+
+```
+## Mejor Subconjunto de variables.
+
+Este método presentado nos permite identidicar los modelos que con menor cantidad de variables predictoras logran tener un buen rendimiento.
+
+- **R2 ajustado**: Buscamos máximinzar la función pues alor más alto indica que el modelo explica una mayor proporción de la variabilidad de la respuesta.
+- **AIC**: . Un menor valor de AIC es mejor, en este caso el modelo de 11 variables tambén es el mejor.
+- **SBIC**: Asi como el AIC se busca minimazar, el resutado más favorable considerando esta premisa es el modelo que considera 9 variables.
+- **C(p)**: Como el BIC, este también nos dice que el mejor modelo es aquel que cuenta con 9 variables.
+
+## Selección de variables utilizando el método Forward.
+```{r forward,  fig.width=10}
+modelo_forward <- ols_step_forward_p(modelo,  penter=0.05)
+modelo_forward
+```
+ Al agregar progresivamente variables al modelo resulta que el modelo completo, considerando la mayoría de los indicadores es el que nos ofrecer una mejor predictibilidad.
+
+## Selección de variables utilizando el método Backward.
+```{r fbackward,  fig.width=10}
+backward <- ols_step_backward_p(modelo,  prem=0.1)
+backward 
+```
+ Al remover variables del modelo, ninguno de los modelos resultantes termina por tener alguno de los indicadores en un estado más favorable, esto es consistente con los resultados en las metodologias anteriores.
+ 
+## Análisis de diagnostico através residuales estandarizados 
+```{r re,  fig.width=10}
+residuos_estandarizados <- rstandard(modelo)
+
+# Graficar los residuos estandarizados
+plot(residuos_estandarizados, ylab = "Residuos Estandarizados", xlab = "Índice de Observación")
+abline(h = 0, col = "red")
+```
+Como se puede ver en la imagen los residuos estandarizados no muestran ningún tipo de patrón, lo que es un buen indicio considerando que la bondad de nuestro modelo, es decir la precisión y confiabilidad de un modelo estadístico. Sin embargo, es evidente la existencia de valores atípicos, pues existen varios puntos que se encuentran bien sea en un rango entre -4:-2 o entre 2:3 aproximadamente, lo que nos puede sugerir indagar más sobre el contexto y papel de los datos en este contexto.
+
+
+## Análisis de diagnostico através residuales studentizados.
+```{r rs,  fig.width=10}
+# Calcular los residuos studentizados
+residuos_studentizados <- rstudent(modelo)
+
+# Graficar los residuos studentizados
+plot(residuos_studentizados, ylab = "Residuos Studentizados", xlab = "Índice de Observación")
+abline(h = 0, col = "red")
+
+```
+
+Por otro lado, tenemos los residuales studentizados que parece tener resultados consistentes con los estandarizados, parecen no existir patrones en los errores lo que nos sugiere  que el modelo está capturando adecuadamente la variabilidad de los datos y que las suposiciones subyacentes del modelo. Además de que  también se visualizan outliers que se encuentran en rangos similares a los ya mencionados.
